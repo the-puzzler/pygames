@@ -1,0 +1,72 @@
+Quick Cheatsheet — Workers & War Bots
+
+Use this as a quick reference while coding bots during the workshop.
+
+Basics (run_refactored.py / game/run.py)
+- One action per step
+- Return a dict with one of the keys below:
+  - {"convert": N}                -> convert N workers into N soldiers
+  - {"build_houses": N}           -> build N houses (cost below)
+  - {"build_defenses": N}         -> build N towers (cost below)
+  - {"attack_pct": p}             -> p in [0..1], send that fraction of soldiers now; persists
+- Engine behavior (robust):
+  - If your function errors, you Wait this step (no crash)
+  - Numbers are clamped: negatives/non-numeric -> 0; attack_pct clamped to [0..1]
+  - If you ask for more than you can afford, it builds/converts as many as possible
+
+Reading state values in your bot
+- The state passed to your function is a BotView with simple counters.
+
+  # step number
+  step = state.step
+
+  # my stats
+  me = state.me
+  my_workers  = me.workers
+  my_soldiers = me.soldiers
+  my_houses   = me.houses
+  my_defenses = me.defenses
+  my_attack   = me.attack_pct
+
+  # opponent stats
+  opp = state.opp
+  opp_workers  = opp.workers
+  opp_soldiers = opp.soldiers
+  opp_houses   = opp.houses
+  opp_defenses = opp.defenses
+  opp_attack   = opp.attack_pct
+
+  # constants (you may hardcode these instead; mapping shown for completeness)
+  # economy: economy.workers == BASE_WORKERS_PER_STEP, economy.soldiers == HOUSE_WORKER_BONUS
+  base_workers_per_step = state.economy.workers
+  per_house_bonus       = state.economy.soldiers
+  # costs: costs.workers == HOUSE_COST, costs.soldiers == DEFENSE_COST
+  house_cost   = state.costs.workers
+  defense_cost = state.costs.soldiers
+
+Key constants (from game/config.py; OK to hardcode for the workshop)
+- Workers gained each step: BASE_WORKERS_PER_STEP = 10
+- Extra per house per step: HOUSE_WORKER_BONUS = 3
+- Worker compounding bonus: about 5% of current workers (WORKER_BONUS = 1.05)
+- House cost: HOUSE_COST = 20 workers
+- Defense tower cost: DEFENSE_COST = 20 workers
+- Defense tower HP: DEFENSE_HEALTH = 30
+
+Combat (simplified)
+- Each attacker deals 1 damage
+- Damage applies to defenses (HP) first, then soldiers (1:1), then workers (1:1)
+- 1v1 defeat when both your soldiers and workers reach 0 (towers alone don’t keep you alive)
+
+Where to put your bots
+- Add your bot functions to game/bots.py and run via:
+  - 1v1: uv run run_refactored.py
+  - 2–6P: uv run run_multi.py
+
+Mini example
+  def opener(state):
+      me, opp = state.me, state.opp
+      if me.houses < 3 and me.workers >= 20:
+          return {"build_houses": 1}
+      if me.soldiers >= 8:
+          return {"attack_pct": 0.4}
+      return {"convert": max(0, me.workers - 10)}

@@ -50,3 +50,32 @@ def adaptive_match(state):
     # Otherwise convert conservatively, leave some workers
     amt = max(0, me.workers - 10)
     return {"convert": amt}
+
+
+def king_bot(state):
+    me, opp = state.me, state.opp
+    my_pop = me.soldiers + me.workers
+    opp_pop = opp.soldiers + opp.workers
+    
+    if me.soldiers > opp.soldiers + opp.workers:
+        return {'attack_pct': 100}
+    
+    if my_pop > opp_pop * 1.5:
+        return {'convert':me.workers * 0.5}
+    
+    if opp.soldiers > my_pop:
+        difference = opp.soldiers - my_pop
+        return {'build_defences': (difference //2) + 1}
+    
+    if me.soldiers > 200 :
+        return {'attack_pct': 100}
+    
+    if my_pop > opp.soldiers * 1.2 :
+        return {'build_houses': (( opp.soldiers) * (2/3))//20}
+    
+    return {'convert':my_pop * 0.045}
+    
+    
+    
+    
+    

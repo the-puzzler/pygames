@@ -52,14 +52,18 @@ class PlayerState:
         left, right = self._side_bounds()
         cx = self.base_x + (30 if self.side=="L" else -30)
         cy = self.base_y
+        # Use ~80% of the window height for vertical placement, centered on base
+        v_margin = int(HEIGHT * 0.10)
+        v_top = max(v_margin, int(cy - (HEIGHT * 0.40)))
+        v_bottom = min(HEIGHT - v_margin, int(cy + (HEIGHT * 0.40)))
         added = []
         for _ in range(n):
             placed = False
             for _try in range(30):
                 x = random.randint(min(cx-120, right-20), max(cx+120, left+20))
-                y = random.randint(cy-120, cy+120)
+                y = random.randint(v_top, v_bottom)
                 x = max(left+10, min(right-10, x))
-                y = max(70, min(HEIGHT-70, y))
+                y = max(v_margin, min(HEIGHT - v_margin, y))
                 ok = True
                 for hx, hy in self._house_positions:
                     if (hx-x)**2 + (hy-y)**2 < 26*26:
@@ -71,7 +75,7 @@ class PlayerState:
                     break
             if not placed:
                 hx = cx + random.randint(-30,30)
-                hy = cy + random.randint(-30,30)
+                hy = max(v_top, min(v_bottom, cy + random.randint(-60,60)))
                 self._house_positions.append((hx, hy))
                 added.append((hx, hy))
         return added
@@ -146,9 +150,13 @@ class PlayerState:
         old_mid_x = WIDTH//2 - 70 if self.side == "L" else WIDTH//2 + 70
         # Move the ring ~50% toward the owner's base
         x_center = int(self.base_x + 0.5 * (old_mid_x - self.base_x))
+        # Vertical band ~80% of window height around base
+        v_margin = int(HEIGHT * 0.10)
+        v_top = max(v_margin, int(self.base_y - (HEIGHT * 0.40)))
+        v_bottom = min(HEIGHT - v_margin, int(self.base_y + (HEIGHT * 0.40)))
         for _ in range(n):
             x = x_center + random.randint(-12, 12)
-            y = self.base_y + random.randint(-90, 90)
+            y = random.randint(v_top, v_bottom)
             # avoid overlapping too closely with existing towers
             ok = True
             for t in self._defense_positions:
@@ -162,7 +170,7 @@ class PlayerState:
             else:
                 # fallback slight jitter
                 x2 = x_center + random.randint(-6, 6)
-                y2 = self.base_y + random.randint(-90, 90)
+                y2 = max(v_top, min(v_bottom, self.base_y + random.randint(-120, 120)))
                 self._defense_positions.append({"x": x2, "y": y2, "hp": DEFENSE_HEALTH})
                 sites.append((x2, y2))
         return sites

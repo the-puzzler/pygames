@@ -11,15 +11,31 @@ VIS_RNG = random.Random()
 
 
 def sanitize_action(act_dict, prev_attack_pct, workers_available):
-    """Enforce exactly one action per step.
-    Priority order if multiple are requested: convert > build_houses > build_defenses > attack.
+    """Enforce exactly one action per step with robust parsing.
+    Priority: convert > build_houses > build_defenses > attack.
     Attack action both sets attack_pct and triggers sending this step.
+    Non-numeric or out-of-range inputs are clamped; invalid values become 0 or previous.
     """
-    convert = int(max(0, act_dict.get("convert", 0)))
-    build_h = int(max(0, act_dict.get("build_houses", 0)))
-    build_d = int(max(0, act_dict.get("build_defenses", 0)))
+
+    def to_int_nonneg(val):
+        try:
+            n = int(float(val))
+        except Exception:
+            n = 0
+        return max(0, n)
+
+    def to_float_01(val, default):
+        try:
+            f = float(val)
+        except Exception:
+            return default
+        return max(0.0, min(1.0, f))
+
+    convert = to_int_nonneg(act_dict.get("convert", 0))
+    build_h = to_int_nonneg(act_dict.get("build_houses", 0))
+    build_d = to_int_nonneg(act_dict.get("build_defenses", 0))
     attack_raw = act_dict.get("attack_pct", None)
-    attack_pct = prev_attack_pct if attack_raw is None else max(0.0, min(1.0, float(attack_raw)))
+    attack_pct = prev_attack_pct if attack_raw is None else to_float_01(attack_raw, prev_attack_pct)
 
     if convert > 0:
         amt = min(convert, workers_available)
@@ -73,8 +89,16 @@ def run_game(BOT_L, BOT_R):
 
                 state_L = BotView(step_nr, p1, p2)
                 state_R = BotView(step_nr, p2, p1)
-                raw_L = BOT_L(state_L) or {}
-                raw_R = BOT_R(state_R) or {}
+                try:
+                    raw_L = BOT_L(state_L) or {}
+                except Exception as e:
+                    print(f"[WARN] {p1.name} bot error at step {step_nr}: {e}")
+                    raw_L = {}
+                try:
+                    raw_R = BOT_R(state_R) or {}
+                except Exception as e:
+                    print(f"[WARN] {p2.name} bot error at step {step_nr}: {e}")
+                    raw_R = {}
                 act_L = sanitize_action(raw_L, p1.attack_pct, p1.workers)
                 act_R = sanitize_action(raw_R, p2.attack_pct, p2.workers)
 

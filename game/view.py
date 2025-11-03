@@ -168,7 +168,8 @@ def draw_base(surface, player, dt: float):
                     x = VIS_RNG.randint(-50, -10)
                 else:
                     x = VIS_RNG.randint(WIDTH+10, WIDTH+50)
-                y = cy + VIS_RNG.randint(-120, 120)
+                # Ingress from around base Y but allow ~80% window height spread
+                y = int(cy + VIS_RNG.randint(int(-HEIGHT*0.40), int(HEIGHT*0.40)))
             player._worker_positions.append((float(x), float(y)))
             dx = cx - x; dy = cy - y
             dist = math.hypot(dx, dy) + 1e-6
@@ -191,9 +192,10 @@ def draw_base(surface, player, dt: float):
             top = max(40, int(player.base_y - roam_h//2))
             bottom = min(HEIGHT-40, int(player.base_y + roam_h//2))
         else:
-            # Full side bounds in 2-player mode
+            # Full side bounds in 2-player mode, with ~10% margins vertically (~80% usable height)
             left, right = player._side_bounds()
-            top, bottom = 60, HEIGHT-60
+            v_margin = int(HEIGHT * 0.10)
+            top, bottom = v_margin, HEIGHT - v_margin
         # Population factor to weaken bias and encourage spread
         f = min(1.0, math.sqrt(max(1.0, need)) / 20.0)
         tasked = {t['i'] for t in player._worker_tasks if 0 <= t['i'] < len(player._worker_positions)}

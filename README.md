@@ -7,6 +7,8 @@ Two small Pygame bot games I made for my weekly Python workshop (instead of our 
 
 Both are designed to be approachable in a single session, with a tiny API and immediate visual feedback.
 
+Quick reference: see STUDENT_CHEATSHEET.txt for a compact summary of bot APIs, constants, and examples.
+
 ## Setup
 
 Requires Python 3.12+. Dependencies: `pygame-ce`.
@@ -76,9 +78,16 @@ An economic tug‑of‑war. Each step, workers grow your economy; you choose one
 - One‑action rule: `game/run.py:13` (`sanitize_action`)
 - 1v1 loop: `game/run.py:39` (`run_game`)
 
+Headless practice (no graphics):
+- Use `ww_headless.py` to simulate 1v1 in the terminal against a greedy opponent.
+- Edit the `my_training_bot` at the bottom of the file and re-run.
+- Run: `uv run ww_headless.py` (or `python ww_headless.py`).
+
+Robustness: If a bot function raises an exception or returns invalid values, the engine treats it as a safe no‑op (Wait) for that step. Numeric inputs are clamped (e.g., build only as many as you can afford; negative or non‑numeric becomes 0; attack percentages are clamped to 0..1 and persist until changed).
+
 ### Turn structure and actions
 
-Time is split into fixed PLAN steps. Each PLAN step your bot returns a dict with optional keys; the engine takes exactly one action according to priority.
+Time is split into fixed PLAN steps. Each PLAN step your bot returns a dict with one action key; the engine performs exactly one action per step.
 
 Allowed keys your bot may return:
 
@@ -87,7 +96,7 @@ Allowed keys your bot may return:
 - `{"build_defenses": N}` — spend `N * DEFENSE_COST` workers to add `N` defense towers
 - `{"attack_pct": p}` — set attack percentage `p` (0..1) and send that fraction of your garrison this step
 
-If you return multiple keys, priority is: convert > build_houses > build_defenses > attack. The engine also clamps by available workers and valid ranges. Attack percentage persists between steps until you change it.
+Return only one key per step; if you send more than one, the engine will perform a single action and ignore the rest. The engine also clamps by available workers and valid ranges. Attack percentage persists between steps until you change it.
 
 Economy per step (see `game/config.py` and `PlayerState.spawn_workers`):
 

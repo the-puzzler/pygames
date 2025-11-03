@@ -8,12 +8,26 @@ from game.combat import resolve_attack_packet
 
 
 def sanitize_action(act_dict, prev_attack_pct, workers_available):
-    # Same one-action rule as 2P
-    convert = int(max(0, act_dict.get("convert", 0)))
-    build_h = int(max(0, act_dict.get("build_houses", 0)))
-    build_d = int(max(0, act_dict.get("build_defenses", 0)))
+    # Same one-action rule as 2P, with robust parsing and clamping
+    def to_int_nonneg(val):
+        try:
+            n = int(float(val))
+        except Exception:
+            n = 0
+        return max(0, n)
+
+    def to_float_01(val, default):
+        try:
+            f = float(val)
+        except Exception:
+            return default
+        return max(0.0, min(1.0, f))
+
+    convert = to_int_nonneg(act_dict.get("convert", 0))
+    build_h = to_int_nonneg(act_dict.get("build_houses", 0))
+    build_d = to_int_nonneg(act_dict.get("build_defenses", 0))
     attack_raw = act_dict.get("attack_pct", None)
-    attack_pct = prev_attack_pct if attack_raw is None else max(0.0, min(1.0, float(attack_raw)))
+    attack_pct = prev_attack_pct if attack_raw is None else to_float_01(attack_raw, prev_attack_pct)
 
     if convert > 0:
         amt = min(convert, workers_available)
@@ -150,7 +164,11 @@ def run_game_multi(bots):
                     opp_idx = (i+1) % len(players)
                     # Provide some opponent info: pick next as reference
                     state = BotView(step_nr, me, players[opp_idx])
-                    raw = bot(state) or {}
+                    try:
+                        raw = bot(state) or {}
+                    except Exception as e:
+                        print(f"[WARN] {me.name} bot error at step {step_nr}: {e}")
+                        raw = {}
                     act = sanitize_action(raw, me.attack_pct, me.workers)
                     acts.append(act)
 
