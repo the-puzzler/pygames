@@ -1,7 +1,7 @@
 # TRON / Light-Cycles (Pygame, multi-bot)
 # - Students implement: def bot(state) -> "L"|"R"|"S"
 # - Add their functions to BOTS; the function names become player names
-# - Run: uv run main.py
+# - Run: uv run tron/main.py
 
 import sys, math, random
 import pygame
