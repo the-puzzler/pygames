@@ -20,9 +20,18 @@ SEED = None                   # set to an int for reproducibility
 
 
 # Colors
-GREEN  = (24, 120, 44)
+# Slightly lighter field green
+GREEN  = (54, 150, 74)
 BROWN  = (139, 69, 19)
 PINK   = (255, 105, 180)
 GREY   = (128, 128, 128)
 WHITE  = (240, 240, 240)
 BLACK  = (0, 0, 0)
+
+# Sprite target sizes (in pixels, height-based; images are scaled preserving aspect)
+WORKER_SIZE  = 8
+SOLDIER_SIZE = 12
+HOUSE_SIZE   = 24
+TOWER_SIZE   = 24
+GRASS_SIZE   = 10
+TREE_SIZE    = 18

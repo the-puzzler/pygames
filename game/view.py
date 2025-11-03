@@ -1,6 +1,6 @@
-import math, random
+import math, random, os
 import pygame
-from .config import WIDTH, HEIGHT, FIELD_MARGIN, GREEN, BROWN, PINK, GREY, WHITE, BASE_WORKERS_PER_STEP, HOUSE_WORKER_BONUS
+from .config import WIDTH, HEIGHT, FIELD_MARGIN, GREEN, BROWN, PINK, GREY, WHITE, BASE_WORKERS_PER_STEP, HOUSE_WORKER_BONUS, WORKER_SIZE, SOLDIER_SIZE, HOUSE_SIZE, TOWER_SIZE, GRASS_SIZE, TREE_SIZE, SEED
 
 
 def tri_points(cx, cy, size, facing_right=True):
@@ -9,17 +9,63 @@ def tri_points(cx, cy, size, facing_right=True):
     else:
         return [(cx-size, cy), (cx+size, cy-size), (cx+size, cy+size)]
 
+# Sprite loading and orientation
+_IMG_CACHE = {}
+
+def _load_base(name):
+    key = ("base", name)
+    if key in _IMG_CACHE:
+        return _IMG_CACHE[key]
+    path = os.path.join(os.path.dirname(__file__), name)
+    img = pygame.image.load(path).convert_alpha()
+    _IMG_CACHE[key] = img
+    return img
+
+def get_image(kind: str, side: str):
+    """Return oriented image for kind in {worker,soldier,house,tower} and side 'L' or 'R'."""
+    filename = {
+        'worker': 'worker.png',
+        'soldier': 'soldier.png',
+        'house': 'house.png',
+        'tower': 'tower.png',
+        'grass': 'grass.png',
+        'tree':  'tree.png',
+    }[kind]
+    key = (kind, side)
+    if key in _IMG_CACHE:
+        return _IMG_CACHE[key]
+    base = _load_base(filename)
+    # Scale to target size (height-based)
+    target_h = {
+        'worker': WORKER_SIZE,
+        'soldier': SOLDIER_SIZE,
+        'house': HOUSE_SIZE,
+        'tower': TOWER_SIZE,
+        'grass': GRASS_SIZE,
+        'tree':  TREE_SIZE,
+    }[kind]
+    if base.get_height() != target_h:
+        aspect = base.get_width() / max(1, base.get_height())
+        target_w = max(1, int(round(target_h * aspect)))
+        base_scaled = pygame.transform.smoothscale(base, (target_w, target_h))
+    else:
+        base_scaled = base
+    if side == 'R' and kind in ('worker','soldier','house','tower'):
+        img = pygame.transform.flip(base_scaled, True, False)
+    else:
+        img = base_scaled
+    _IMG_CACHE[key] = img
+    return img
+
 
 def draw_base(surface, player, dt: float):
     # Defenses: draw towers at stored positions (dicts: x,y,hp)
-    # Sync count from list
     player.defenses = len(player._defense_positions)
+    tower_img = get_image('tower', player.side)
+    tw, th = tower_img.get_width(), tower_img.get_height()
     for t in player._defense_positions:
         tx, ty = int(t['x']), int(t['y'])
-        base = pygame.Rect(int(tx - 6), int(ty + 6), 12, 6)
-        shaft = pygame.Rect(int(tx - 3), int(ty - 10), 6, 16)
-        pygame.draw.rect(surface, GREY, base)
-        pygame.draw.rect(surface, (90,90,90), shaft)
+        surface.blit(tower_img, (tx - tw//2, ty - th//2))
 
     # Workers: pink dots, gentle continuous wandering around base
     wr = 4
@@ -177,21 +223,26 @@ def draw_base(surface, player, dt: float):
                 for t in player._worker_tasks:
                     t['i'] = shift_index(t['i'])
 
+    worker_img = get_image('worker', player.side)
+    ww, wh = worker_img.get_width(), worker_img.get_height()
     for (x, y) in player._worker_positions:
-        pygame.draw.circle(surface, PINK, (int(x), int(y)), wr)
+        surface.blit(worker_img, (int(x) - ww//2, int(y) - wh//2))
 
     # Soldiers: garrison triangles; trim excess only (no auto-add)
     if len(player._soldier_positions) > player.soldiers:
         player._soldier_positions = player._soldier_positions[:player.soldiers]
     draw_n = min(player.soldiers, len(player._soldier_positions))
+    soldier_img = get_image('soldier', player.side)
+    sw, sh = soldier_img.get_width(), soldier_img.get_height()
     for i in range(draw_n):
         cx2, cy2 = player._soldier_positions[i]
-        pts = tri_points(int(cx2), int(cy2), 5, facing_right=(player.side=="L"))
-        pygame.draw.polygon(surface, GREY, pts)
+        surface.blit(soldier_img, (int(cx2) - sw//2, int(cy2) - sh//2))
 
     # Incoming soldiers walking in from edge until they reach garrison
     if player._soldier_incoming:
         new_incoming = []
+        soldier_img = get_image('soldier', player.side)
+        sw, sh = soldier_img.get_width(), soldier_img.get_height()
         for u in player._soldier_incoming:
             x, y = u['x'], u['y']
             tx, ty = u['tx'], u['ty']
@@ -205,34 +256,119 @@ def draw_base(surface, player, dt: float):
                 uy = y + dy/dist*spd*dt
                 u['x'], u['y'] = ux, uy
                 new_incoming.append(u)
-                pts = tri_points(int(ux), int(uy), 5, facing_right=(player.side=="L"))
-                pygame.draw.polygon(surface, GREY, pts)
+                surface.blit(soldier_img, (int(ux) - sw//2, int(uy) - sh//2))
         player._soldier_incoming = new_incoming
 
     # Houses: draw last so they appear over workers/soldiers/towers
-    size = 10
     if len(player._house_positions) != player.houses:
         if len(player._house_positions) < player.houses:
             player.add_houses(player.houses - len(player._house_positions))
         else:
             player._house_positions = player._house_positions[:player.houses]
+    house_img = get_image('house', player.side)
+    hw, hh = house_img.get_width(), house_img.get_height()
     for (hx, hy) in player._house_positions:
-        rect = pygame.Rect(int(hx - size//2), int(hy - size//2), size, size)
-        pygame.draw.rect(surface, BROWN, rect)
+        surface.blit(house_img, (int(hx) - hw//2, int(hy) - hh//2))
 
-    # Defense count text
-    font = pygame.font.SysFont(None, 18)
-    shield = font.render(f"Defenses: {player.defenses}", True, WHITE)
-    if player.side == "L":
-        surface.blit(shield, (player.base_x - 20, player.base_y + 90))
-    else:
-        w = shield.get_width()
-        surface.blit(shield, (player.base_x - w + 20, player.base_y + 90))
+    # (No per-base defense text; shown only in top HUD)
 
+
+_DECOR = None
+_NOISE_SURF = None
+
+def _smoothstep(t: float) -> float:
+    return t * t * (3.0 - 2.0 * t)
+
+def _value_noise(x: float, y: float, grid, gw: int, gh: int):
+    # x,y in [0,1]; grid is gw x gh of random values
+    xf = x * (gw - 1)
+    yf = y * (gh - 1)
+    x0 = int(xf)
+    y0 = int(yf)
+    x1 = min(x0 + 1, gw - 1)
+    y1 = min(y0 + 1, gh - 1)
+    tx = _smoothstep(xf - x0)
+    ty = _smoothstep(yf - y0)
+    v00 = grid[y0][x0]
+    v10 = grid[y0][x1]
+    v01 = grid[y1][x0]
+    v11 = grid[y1][x1]
+    a = v00 * (1 - tx) + v10 * tx
+    b = v01 * (1 - tx) + v11 * tx
+    return a * (1 - ty) + b * ty
+
+def _init_noise_surface():
+    global _NOISE_SURF
+    rng = random.Random(SEED if SEED is not None else None)
+    # Compute low-res noise then upscale for performance
+    NX = max(64, WIDTH // 6)
+    NY = max(64, HEIGHT // 6)
+    small = pygame.Surface((NX, NY), flags=pygame.SRCALPHA)
+    octaves = 3
+    base_freq = 12
+    max_alpha = 30
+    # Precompute grids per octave once
+    grids = []
+    freqs = []
+    for o in range(octaves):
+        freq = int(base_freq * (2 ** o))
+        gw = max(2, int(freq))
+        gh = max(2, int(freq * NY / NX))
+        rng.seed((o+1) * 9176)
+        grid = [[rng.random() for _ in range(gw)] for __ in range(gh)]
+        grids.append((grid, gw, gh))
+        freqs.append(freq)
+    for y in range(NY):
+        for x in range(NX):
+            nx = x / max(1, NX - 1)
+            ny = y / max(1, NY - 1)
+            amp = 1.0
+            val = 0.0
+            norm = 0.0
+            for (grid, gw, gh) in grids:
+                val += _value_noise(nx, ny, grid, gw, gh) * amp
+                norm += amp
+                amp *= 0.5
+            v = val / max(1e-6, norm)
+            a = int(max(0, min(max_alpha, (v - 0.5) * 2.0 * max_alpha)))
+            if a > 0:
+                small.set_at((x, y), (0, 0, 0, a))
+    _NOISE_SURF = pygame.transform.smoothscale(small, (WIDTH, HEIGHT))
+
+def _init_decor():
+    global _DECOR
+    rng = random.Random(SEED if SEED is not None else None)
+    area = WIDTH * HEIGHT
+    # More grass than trees
+    n_grass = max(60, area // 9000)
+    n_trees = max(15, area // 28000)
+    # Avoid HUD/top/bottom margins
+    xmin, xmax = 20, WIDTH-20
+    ymin, ymax = 40, HEIGHT-40
+    grass = [(rng.randint(xmin, xmax), rng.randint(ymin, ymax)) for _ in range(int(n_grass))]
+    trees = [(rng.randint(xmin, xmax), rng.randint(ymin, ymax)) for _ in range(int(n_trees))]
+    _DECOR = { 'grass': grass, 'trees': trees }
 
 def draw_field(surface):
     surface.fill(GREEN)
-    # Plain field; no center line
+    # Scatter background decor
+    global _DECOR
+    global _NOISE_SURF
+    if _DECOR is None:
+        _init_decor()
+    if _NOISE_SURF is None:
+        _init_noise_surface()
+    # Darken with subtle noise overlay
+    if _NOISE_SURF is not None:
+        surface.blit(_NOISE_SURF, (0, 0))
+    gimg = get_image('grass', 'L')
+    timg = get_image('tree', 'L')
+    gw, gh = gimg.get_width(), gimg.get_height()
+    tw, th = timg.get_width(), timg.get_height()
+    for (x, y) in _DECOR['grass']:
+        surface.blit(gimg, (x - gw//2, y - gh//2))
+    for (x, y) in _DECOR['trees']:
+        surface.blit(timg, (x - tw//2, y - th//2))
 
 
 def draw_hud(surface, p1, p2, phase, step_time_left, step_nr):

@@ -1,7 +1,7 @@
 import random, time, math, sys
 import pygame
 from .config import WIDTH, HEIGHT, ATTACK_TIME, FPS, GREY, PINK
-from .view import draw_field, draw_base, draw_hud, tri_points
+from .view import draw_field, draw_base, draw_hud, tri_points, get_image
 
 
 def spawn_attack_units(p, count, defender, both_attacking, starts, target_points=None):
@@ -104,36 +104,42 @@ def animate_attack(screen, clock, p1_units, p2_units, p1, p2, step_nr, cont_L=0,
 
         # Draw placeholders for victims (static until hit)
         if placeholders_L:
+            soldier_L = get_image('soldier', 'L')
+            worker_L = get_image('worker', 'L')
+            tower_L = get_image('tower', 'L')
+            sw, sh = soldier_L.get_width(), soldier_L.get_height()
+            ww, wh = worker_L.get_width(), worker_L.get_height()
+            tw, th = tower_L.get_width(), tower_L.get_height()
             for (x, y) in placeholders_L.get('soldiers', []):
-                pts = tri_points(int(x), int(y), 5, facing_right=True)
-                pygame.draw.polygon(screen, GREY, pts)
+                screen.blit(soldier_L, (int(x) - sw//2, int(y) - sh//2))
             for (x, y) in placeholders_L.get('workers', []):
-                pygame.draw.circle(screen, PINK, (int(x), int(y)), 4)
+                screen.blit(worker_L, (int(x) - ww//2, int(y) - wh//2))
             for (x, y) in placeholders_L.get('towers', []):
-                base = pygame.Rect(int(x - 6), int(y + 6), 12, 6)
-                shaft = pygame.Rect(int(x - 3), int(y - 10), 6, 16)
-                pygame.draw.rect(screen, GREY, base)
-                pygame.draw.rect(screen, (90,90,90), shaft)
+                screen.blit(tower_L, (int(x) - tw//2, int(y) - th//2))
         if placeholders_R:
+            soldier_R = get_image('soldier', 'R')
+            worker_R = get_image('worker', 'R')
+            tower_R = get_image('tower', 'R')
+            sw, sh = soldier_R.get_width(), soldier_R.get_height()
+            ww, wh = worker_R.get_width(), worker_R.get_height()
+            tw, th = tower_R.get_width(), tower_R.get_height()
             for (x, y) in placeholders_R.get('soldiers', []):
-                pts = tri_points(int(x), int(y), 5, facing_right=False)
-                pygame.draw.polygon(screen, GREY, pts)
+                screen.blit(soldier_R, (int(x) - sw//2, int(y) - sh//2))
             for (x, y) in placeholders_R.get('workers', []):
-                pygame.draw.circle(screen, PINK, (int(x), int(y)), 4)
+                screen.blit(worker_R, (int(x) - ww//2, int(y) - wh//2))
             for (x, y) in placeholders_R.get('towers', []):
-                base = pygame.Rect(int(x - 6), int(y + 6), 12, 6)
-                shaft = pygame.Rect(int(x - 3), int(y - 10), 6, 16)
-                pygame.draw.rect(screen, GREY, base)
-                pygame.draw.rect(screen, (90,90,90), shaft)
+                screen.blit(tower_R, (int(x) - tw//2, int(y) - th//2))
 
         # Removed extra defensive bars on sides for cleaner look
 
+        soldier_L = get_image('soldier', 'L')
+        soldier_R = get_image('soldier', 'R')
+        swL, shL = soldier_L.get_width(), soldier_L.get_height()
+        swR, shR = soldier_R.get_width(), soldier_R.get_height()
         for u in p1_units:
-            pts = tri_points(int(u["x"]), int(u["y"]), 6, facing_right=True)
-            pygame.draw.polygon(screen, GREY, pts)
+            screen.blit(soldier_L, (int(u["x"]) - swL//2, int(u["y"]) - shL//2))
         for u in p2_units:
-            pts = tri_points(int(u["x"]), int(u["y"]), 6, facing_right=False)
-            pygame.draw.polygon(screen, GREY, pts)
+            screen.blit(soldier_R, (int(u["x"]) - swR//2, int(u["y"]) - shR//2))
 
         rem = max(0.0, ATTACK_TIME - (time.time()-t0))
         draw_hud(screen, p1, p2, "ATTACK", rem, step_nr)
