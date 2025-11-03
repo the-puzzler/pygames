@@ -70,7 +70,7 @@ def king_bot(state):
     if me.soldiers > 200 :
         return {'attack_pct': 100}
     
-    if my_pop > opp.soldiers * 1.2 :
+    if my_pop > opp.soldiers * 1.1 :
         return {'build_houses': (( opp.soldiers) * (2/3))//20}
     
     return {'convert':my_pop * 0.045}
