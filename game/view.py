@@ -59,13 +59,28 @@ def get_image(kind: str, side: str):
 
 
 def draw_base(surface, player, dt: float):
-    # Defenses: draw towers at stored positions (dicts: x,y,hp)
+    # Defenses: draw towers at stored positions (dicts: x,y,hp), with spawn scale-in
     player.defenses = len(player._defense_positions)
     tower_img = get_image('tower', player.side)
     tw, th = tower_img.get_width(), tower_img.get_height()
+    now = time.time()
     for t in player._defense_positions:
         tx, ty = int(t['x']), int(t['y'])
-        surface.blit(tower_img, (tx - tw//2, ty - th//2))
+        # Check recent spawn for scale-in (0.15s from 0.9->1.0)
+        scale = 1.0
+        if getattr(player, '_spawn_bursts', None):
+            for b in player._spawn_bursts:
+                if abs(b.get('x',0)-tx) < 8 and abs(b.get('y',0)-ty) < 8:
+                    start = b.get('until', now) - 0.6
+                    prog = max(0.0, min(1.0, (now - start) / 0.15))
+                    scale = 0.9 + 0.1 * prog
+                    break
+        if scale != 1.0:
+            sw = max(1, int(tw * scale)); sh = max(1, int(th * scale))
+            simg = pygame.transform.smoothscale(tower_img, (sw, sh))
+            surface.blit(simg, (tx - sw//2, ty - sh//2))
+        else:
+            surface.blit(tower_img, (tx - tw//2, ty - th//2))
         # Small HP bar above tower
         try:
             hp = max(0, min(DEFENSE_HEALTH, int(t.get('hp', DEFENSE_HEALTH))))
@@ -302,7 +317,7 @@ def draw_base(surface, player, dt: float):
                 surface.blit(soldier_img, (int(ux) - sw//2, int(uy) - sh//2))
         player._soldier_incoming = new_incoming
 
-    # Houses: draw last so they appear over workers/soldiers/towers
+    # Houses: draw last so they appear over workers/soldiers/towers, with spawn scale-in
     if len(player._house_positions) != player.houses:
         if len(player._house_positions) < player.houses:
             player.add_houses(player.houses - len(player._house_positions))
@@ -311,7 +326,20 @@ def draw_base(surface, player, dt: float):
     house_img = get_image('house', player.side)
     hw, hh = house_img.get_width(), house_img.get_height()
     for (hx, hy) in player._house_positions:
-        surface.blit(house_img, (int(hx) - hw//2, int(hy) - hh//2))
+        scale = 1.0
+        if getattr(player, '_spawn_bursts', None):
+            for b in player._spawn_bursts:
+                if abs(b.get('x',0)-hx) < 8 and abs(b.get('y',0)-hy) < 8:
+                    start = b.get('until', now) - 0.6
+                    prog = max(0.0, min(1.0, (now - start) / 0.15))
+                    scale = 0.9 + 0.1 * prog
+                    break
+        if scale != 1.0:
+            sw = max(1, int(hw * scale)); sh = max(1, int(hh * scale))
+            simg = pygame.transform.smoothscale(house_img, (sw, sh))
+            surface.blit(simg, (int(hx) - sw//2, int(hy) - sh//2))
+        else:
+            surface.blit(house_img, (int(hx) - hw//2, int(hy) - hh//2))
 
     # (No per-base defense text; shown only in top HUD)
 
@@ -408,6 +436,10 @@ def draw_field(surface):
     timg = get_image('tree', 'L')
     gw, gh = gimg.get_width(), gimg.get_height()
     tw, th = timg.get_width(), timg.get_height()
+    # Static noise overlay
+    if _NOISE_SURF is not None:
+        surface.blit(_NOISE_SURF, (0, 0))
+    # Static decor
     for (x, y) in _DECOR['grass']:
         surface.blit(gimg, (x - gw//2, y - gh//2))
     for (x, y) in _DECOR['trees']:
