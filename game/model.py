@@ -136,14 +136,16 @@ class PlayerState:
         return self.add_defenses(n)
 
     def add_defenses(self, n: int):
-        """Create visual defense tower positions near midfield border on this side."""
+        """Create visual defense tower positions biased toward the owner's side.
+        In 1v1, place them roughly halfway between the base and the old midline ring
+        (about 50% closer to the owning team compared to the previous placement)."""
         if n <= 0:
             return []
         sites = []
-        if self.side == "L":
-            x_center = WIDTH//2 - 70
-        else:
-            x_center = WIDTH//2 + 70
+        # Previous midline-adjacent centers
+        old_mid_x = WIDTH//2 - 70 if self.side == "L" else WIDTH//2 + 70
+        # Move the ring ~50% toward the owner's base
+        x_center = int(self.base_x + 0.5 * (old_mid_x - self.base_x))
         for _ in range(n):
             x = x_center + random.randint(-12, 12)
             y = self.base_y + random.randint(-90, 90)

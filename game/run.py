@@ -1,10 +1,13 @@
 import sys, time, random, math
 import pygame
-from .config import WIDTH, HEIGHT, STEP_TIME, BASE_WORKERS_PER_STEP, HOUSE_WORKER_BONUS, HOUSE_COST, DEFENSE_COST, SEED
+from .config import WIDTH, HEIGHT, STEP_TIME, BASE_WORKERS_PER_STEP, HOUSE_WORKER_BONUS, HOUSE_COST, DEFENSE_COST, SEED, TIME_SCALE
 from .model import PlayerState, BotView
 from .combat import resolve_attack_packet
 from .view import draw_field, draw_base, draw_hud
 from .anim import spawn_attack_units, animate_attack
+
+# Visual RNG so animation jitter doesn't affect gameplay RNG
+VIS_RNG = random.Random()
 
 
 def sanitize_action(act_dict, prev_attack_pct, workers_available):
@@ -61,11 +64,11 @@ def run_game(BOT_L, BOT_R):
             draw_field(screen)
             draw_base(screen, p1, dt)
             draw_base(screen, p2, dt)
-            rem = max(0.0, STEP_TIME - (now - step_start))
+            rem = max(0.0, STEP_TIME - (now - step_start) * TIME_SCALE)
             draw_hud(screen, p1, p2, "PLAN", rem, step_nr)
             pygame.display.flip()
 
-            if now - step_start >= STEP_TIME:
+            if (now - step_start) * TIME_SCALE >= STEP_TIME:
                 p1.spawn_workers(); p2.spawn_workers()
 
                 state_L = BotView(step_nr, p1, p2)
@@ -178,17 +181,17 @@ def run_game(BOT_L, BOT_R):
                     if def_dmg_R > 0:
                         # Use destroyed tower positions preferentially
                         for (tx, ty) in destroyed_R_defs:
-                            def_targets_R.extend([(tx + random.uniform(-3.0,3.0), ty + random.uniform(-3.0,3.0))])
+                            def_targets_R.extend([(tx + VIS_RNG.uniform(-3.0,3.0), ty + VIS_RNG.uniform(-3.0,3.0))])
                         # Fill remaining damage on surviving towers' positions
                         survive_defs = [(t['x'], t['y']) for t in p2_def_before if isinstance(t, dict) and (t['x'], t['y']) not in destroyed_R_defs]
                         i = 0
                         while len(def_targets_R) < def_dmg_R and survive_defs:
                             tx, ty = survive_defs[i % len(survive_defs)]
-                            def_targets_R.append((tx + random.uniform(-3.0,3.0), ty + random.uniform(-3.0,3.0)))
+                            def_targets_R.append((tx + VIS_RNG.uniform(-3.0,3.0), ty + VIS_RNG.uniform(-3.0,3.0)))
                             i += 1
                     # Build target list: defenses first, then soldiers, then workers
-                    targets_L = def_targets_R + [(tx + random.uniform(-4.0,4.0), ty + random.uniform(-4.0,4.0)) for (tx,ty) in victims_s_R] + \
-                                [(tx + random.uniform(-3.0,3.0), ty + random.uniform(-3.0,3.0)) for (tx,ty) in victims_w_R]
+                    targets_L = def_targets_R + [(tx + VIS_RNG.uniform(-4.0,4.0), ty + VIS_RNG.uniform(-4.0,4.0)) for (tx,ty) in victims_s_R] + \
+                                [(tx + VIS_RNG.uniform(-3.0,3.0), ty + VIS_RNG.uniform(-3.0,3.0)) for (tx,ty) in victims_w_R]
                     targets_L = targets_L[:send_L]
                     placeholders_R = { 'towers': destroyed_R_defs[:], 'soldiers': victims_s_R[:], 'workers': victims_w_R[:] }
                 if send_R > 0:
@@ -201,15 +204,15 @@ def run_game(BOT_L, BOT_R):
                     def_targets_L = []
                     if def_dmg_L > 0:
                         for (tx, ty) in destroyed_L_defs:
-                            def_targets_L.extend([(tx + random.uniform(-3.0,3.0), ty + random.uniform(-3.0,3.0))])
+                            def_targets_L.extend([(tx + VIS_RNG.uniform(-3.0,3.0), ty + VIS_RNG.uniform(-3.0,3.0))])
                         survive_defs_L = [(t['x'], t['y']) for t in p1_def_before if isinstance(t, dict) and (t['x'], t['y']) not in destroyed_L_defs]
                         i = 0
                         while len(def_targets_L) < def_dmg_L and survive_defs_L:
                             tx, ty = survive_defs_L[i % len(survive_defs_L)]
-                            def_targets_L.append((tx + random.uniform(-3.0,3.0), ty + random.uniform(-3.0,3.0)))
+                            def_targets_L.append((tx + VIS_RNG.uniform(-3.0,3.0), ty + VIS_RNG.uniform(-3.0,3.0)))
                             i += 1
-                    targets_R = def_targets_L + [(tx + random.uniform(-4.0,4.0), ty + random.uniform(-4.0,4.0)) for (tx,ty) in victims_s_L] + \
-                                [(tx + random.uniform(-3.0,3.0), ty + random.uniform(-3.0,3.0)) for (tx,ty) in victims_w_L]
+                    targets_R = def_targets_L + [(tx + VIS_RNG.uniform(-4.0,4.0), ty + VIS_RNG.uniform(-4.0,4.0)) for (tx,ty) in victims_s_L] + \
+                                [(tx + VIS_RNG.uniform(-3.0,3.0), ty + VIS_RNG.uniform(-3.0,3.0)) for (tx,ty) in victims_w_L]
                     targets_R = targets_R[:send_R]
                     placeholders_L = { 'towers': destroyed_L_defs[:], 'soldiers': victims_s_L[:], 'workers': victims_w_L[:] }
 
@@ -240,6 +243,22 @@ def run_game(BOT_L, BOT_R):
             right_dead = (p2.soldiers <= 0 and p2.workers <= 0)
 
             if left_dead or right_dead:
+                # Clear all assets for a clean end screen
+                def _clear_assets(pl):
+                    pl.houses = 0
+                    pl.defenses = 0
+                    pl.workers = 0
+                    pl.soldiers = 0
+                    pl._house_positions = []
+                    pl._defense_positions = []
+                    pl._worker_positions = []
+                    pl._worker_vels = []
+                    pl._worker_tasks = []
+                    pl._soldier_positions = []
+                    pl._soldier_incoming = []
+                _clear_assets(p1)
+                _clear_assets(p2)
+
                 draw_field(screen)
                 draw_base(screen, p1, 0.0)
                 draw_base(screen, p2, 0.0)

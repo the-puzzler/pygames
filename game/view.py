@@ -1,6 +1,9 @@
 import math, random, os, time
 import pygame
-from .config import WIDTH, HEIGHT, FIELD_MARGIN, GREEN, BROWN, PINK, GREY, WHITE, BASE_WORKERS_PER_STEP, HOUSE_WORKER_BONUS, WORKER_SIZE, SOLDIER_SIZE, HOUSE_SIZE, TOWER_SIZE, GRASS_SIZE, TREE_SIZE, SEED, DEFENSE_HEALTH
+from .config import WIDTH, HEIGHT, FIELD_MARGIN, GREEN, BROWN, PINK, GREY, WHITE, BASE_WORKERS_PER_STEP, HOUSE_WORKER_BONUS, WORKER_SIZE, SOLDIER_SIZE, HOUSE_SIZE, TOWER_SIZE, GRASS_SIZE, TREE_SIZE, BOULDER_SIZE, SEED, DEFENSE_HEALTH, WINDOW_SCALE
+
+# Dedicated RNG for visuals to avoid influencing gameplay RNG under TIME_SCALE
+VIS_RNG = random.Random(SEED if SEED is not None else 13579)
 
 
 def tri_points(cx, cy, size, facing_right=True):
@@ -30,20 +33,23 @@ def get_image(kind: str, side: str):
         'tower': 'tower.png',
         'grass': 'grass.png',
         'tree':  'tree.png',
+        'boulder': 'boulder.png',
     }[kind]
     key = (kind, side)
     if key in _IMG_CACHE:
         return _IMG_CACHE[key]
     base = _load_base(filename)
     # Scale to target size (height-based)
-    target_h = {
+    base_h = {
         'worker': WORKER_SIZE,
         'soldier': SOLDIER_SIZE,
         'house': HOUSE_SIZE,
         'tower': TOWER_SIZE,
         'grass': GRASS_SIZE,
         'tree':  TREE_SIZE,
+        'boulder': BOULDER_SIZE,
     }[kind]
+    target_h = max(1, int(round(base_h * WINDOW_SCALE)))
     if base.get_height() != target_h:
         aspect = base.get_width() / max(1, base.get_height())
         target_w = max(1, int(round(target_h * aspect)))
@@ -137,15 +143,36 @@ def draw_base(surface, player, dt: float):
     if len(player._worker_positions) < need:
         add = need - len(player._worker_positions)
         for _ in range(add):
-            if player.side == "L":
-                x = random.randint(-50, -10)
+            # In multi-player, allow ingress from nearest edge to the base area
+            if hasattr(player, '_multi_ingress') and player._multi_ingress:
+                bx, by = player.base_x, player.base_y
+                d_left = bx
+                d_right = WIDTH - bx
+                d_top = by
+                d_bottom = HEIGHT - by
+                dm = min(d_left, d_right, d_top, d_bottom)
+                if dm == d_left:
+                    x = VIS_RNG.randint(-60, -20)
+                    y = int(by) + VIS_RNG.randint(-140, 140)
+                elif dm == d_right:
+                    x = VIS_RNG.randint(WIDTH+20, WIDTH+60)
+                    y = int(by) + VIS_RNG.randint(-140, 140)
+                elif dm == d_top:
+                    x = int(bx) + VIS_RNG.randint(-140, 140)
+                    y = VIS_RNG.randint(-50, -20)
+                else:
+                    x = int(bx) + VIS_RNG.randint(-140, 140)
+                    y = VIS_RNG.randint(HEIGHT+20, HEIGHT+60)
             else:
-                x = random.randint(WIDTH+10, WIDTH+50)
-            y = cy + random.randint(-120, 120)
+                if player.side == "L":
+                    x = VIS_RNG.randint(-50, -10)
+                else:
+                    x = VIS_RNG.randint(WIDTH+10, WIDTH+50)
+                y = cy + VIS_RNG.randint(-120, 120)
             player._worker_positions.append((float(x), float(y)))
             dx = cx - x; dy = cy - y
             dist = math.hypot(dx, dy) + 1e-6
-            spd = random.uniform(120.0, 200.0)
+            spd = VIS_RNG.uniform(120.0, 200.0)
             player._worker_vels.append((dx/dist*spd, dy/dist*spd))
     elif len(player._worker_positions) > need:
         # Avoid shrinking while there are consuming tasks to preserve identity illusion
@@ -154,9 +181,19 @@ def draw_base(surface, player, dt: float):
             player._worker_vels = player._worker_vels[:need]
 
     if need:
-        # Rectangular roam area across this side
-        left, right = player._side_bounds()
-        top, bottom = 60, HEIGHT-60
+        # Rectangular roam area
+        if getattr(player, '_multi_roam_tight', False):
+            # Tight leash around base in multi-player mode
+            roam_w = 220
+            roam_h = 200
+            left = max(20, int(player.base_x - roam_w//2))
+            right = min(WIDTH-20, int(player.base_x + roam_w//2))
+            top = max(40, int(player.base_y - roam_h//2))
+            bottom = min(HEIGHT-40, int(player.base_y + roam_h//2))
+        else:
+            # Full side bounds in 2-player mode
+            left, right = player._side_bounds()
+            top, bottom = 60, HEIGHT-60
         # Population factor to weaken bias and encourage spread
         f = min(1.0, math.sqrt(max(1.0, need)) / 20.0)
         tasked = {t['i'] for t in player._worker_tasks if 0 <= t['i'] < len(player._worker_positions)}
@@ -207,10 +244,21 @@ def draw_base(surface, player, dt: float):
             # Integrate
             nx = x + vx * dt
             ny = y + vy * dt
-            # Keep inside rectangular side bounds unless on a task (so it can reach offscreen or far build sites)
+            # Soft bounds: apply gentle push back inside instead of hard clamps (multi tight or normal)
             if idx not in tasked:
-                nx = max(left+10, min(right-10, nx))
-                ny = max(top, min(bottom, ny))
+                # Horizontal soft push
+                if nx < left:
+                    vx += (left - nx) * 2.5 * dt
+                elif nx > right:
+                    vx -= (nx - right) * 2.5 * dt
+                # Vertical soft push
+                if ny < top:
+                    vy += (top - ny) * 2.5 * dt
+                elif ny > bottom:
+                    vy -= (ny - bottom) * 2.5 * dt
+                # Safety soft clamp to a small margin outside bounds
+                nx = max(left - 12, min(right + 12, nx))
+                ny = max(top - 12, min(bottom + 12, ny))
             new_pos.append((nx, ny))
             new_vel.append((vx, vy))
         player._worker_anchors = new_anchors
@@ -229,8 +277,21 @@ def draw_base(surface, player, dt: float):
             tx, ty = t['tx'], t['ty']
             dx = tx - x; dy = ty - y
             dist = math.hypot(dx, dy) + 1e-6
-            # Departures get higher speed to clear the screen quickly
-            spd = 160.0 if (t.get('consume') and not t.get('arrived') and (tx < 0 or tx > WIDTH)) else 120.0
+            # Speed: departures fastest; defense-builders faster than house builders
+            is_depart = (t.get('consume') and not t.get('arrived') and (tx < 0 or tx > WIDTH))
+            is_defense_build = False
+            if not is_depart and t.get('consume') and not t.get('arrived'):
+                # Heuristic: if target matches (or is very close to) a defense position
+                for d in getattr(player, '_defense_positions', []):
+                    if (abs(d.get('x', 0) - tx) <= 8) and (abs(d.get('y', 0) - ty) <= 8):
+                        is_defense_build = True
+                        break
+            if is_depart:
+                spd = 160.0
+            elif is_defense_build:
+                spd = 240.0  # ~2x faster toward towers under construction
+            else:
+                spd = 120.0
             vx = dx/dist*spd
             vy = dy/dist*spd
             player._worker_vels[i] = (vx, vy)
@@ -413,12 +474,14 @@ def _init_decor():
     # More grass than trees
     n_grass = max(60, area // 9000)
     n_trees = max(15, area // 28000)
+    n_boulders = max(2, area // 200000)
     # Avoid HUD/top/bottom margins
     xmin, xmax = 20, WIDTH-20
     ymin, ymax = 40, HEIGHT-40
     grass = [(rng.randint(xmin, xmax), rng.randint(ymin, ymax)) for _ in range(int(n_grass))]
     trees = [(rng.randint(xmin, xmax), rng.randint(ymin, ymax)) for _ in range(int(n_trees))]
-    _DECOR = { 'grass': grass, 'trees': trees }
+    boulders = [(rng.randint(xmin, xmax), rng.randint(ymin, ymax)) for _ in range(int(n_boulders))]
+    _DECOR = { 'grass': grass, 'trees': trees, 'boulders': boulders }
 
 def draw_field(surface):
     surface.fill(GREEN)
@@ -434,8 +497,10 @@ def draw_field(surface):
         surface.blit(_NOISE_SURF, (0, 0))
     gimg = get_image('grass', 'L')
     timg = get_image('tree', 'L')
+    bimg = get_image('boulder', 'L')
     gw, gh = gimg.get_width(), gimg.get_height()
     tw, th = timg.get_width(), timg.get_height()
+    bw, bh = bimg.get_width(), bimg.get_height()
     # Static noise overlay
     if _NOISE_SURF is not None:
         surface.blit(_NOISE_SURF, (0, 0))
@@ -444,6 +509,8 @@ def draw_field(surface):
         surface.blit(gimg, (x - gw//2, y - gh//2))
     for (x, y) in _DECOR['trees']:
         surface.blit(timg, (x - tw//2, y - th//2))
+    for (x, y) in _DECOR.get('boulders', []):
+        surface.blit(bimg, (x - bw//2, y - bh//2))
 
 
 def draw_hud(surface, p1, p2, phase, step_time_left, step_nr):

@@ -1,7 +1,10 @@
 import random, time, math, sys
 import pygame
-from .config import WIDTH, HEIGHT, ATTACK_TIME, FPS, GREY, PINK
+from .config import WIDTH, HEIGHT, ATTACK_TIME, FPS, GREY, PINK, TIME_SCALE, SEED
 from .view import draw_field, draw_base, draw_hud, tri_points, get_image
+
+# Dedicated RNG for visuals
+VIS_RNG = random.Random(SEED if SEED is not None else 97531)
 
 
 def spawn_attack_units(p, count, defender, both_attacking, starts, target_points=None):
@@ -26,7 +29,7 @@ def spawn_attack_units(p, count, defender, both_attacking, starts, target_points
             u["tx"], u["ty"] = tx, ty
             # Control point slightly arced toward target
             midx = (u["sx"] + tx) * 0.5
-            arc = (-1 if p.side=="L" else 1) * random.uniform(10.0, 28.0)
+            arc = (-1 if p.side=="L" else 1) * VIS_RNG.uniform(10.0, 28.0)
             midy = (u["sy"] + ty) * 0.5 + arc
             u["cx"], u["cy"] = midx, midy
         return units
@@ -53,20 +56,20 @@ def spawn_attack_units(p, count, defender, both_attacking, starts, target_points
             u["tx"], u["ty"] = tx, ty
             t_ctrl = 0.4 if p.side=="L" else 0.6
             cx = u["sx"] + (tx - u["sx"]) * t_ctrl
-            cy = u["sy"] + (ty - u["sy"]) * t_ctrl + ( -1 if p.side=="L" else 1 ) * random.uniform(16.0, 36.0)
+            cy = u["sy"] + (ty - u["sy"]) * t_ctrl + ( -1 if p.side=="L" else 1 ) * VIS_RNG.uniform(16.0, 36.0)
             u["cx"], u["cy"] = cx, cy
     return units
 
 
-def animate_attack(screen, clock, p1_units, p2_units, p1, p2, step_nr, cont_L=0, cont_R=0, placeholders_L=None, placeholders_R=None, bursts_L=None, bursts_R=None):
+def animate_attack(screen, clock, p1_units, p2_units, p1, p2, step_nr, cont_L=0, cont_R=0, placeholders_L=None, placeholders_R=None, bursts_L=None, bursts_R=None, upscale_win=None):
     t0 = time.time()
-    while time.time() - t0 < ATTACK_TIME:
+    while ((time.time() - t0) * TIME_SCALE) < ATTACK_TIME:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit(); sys.exit(0)
 
         dt = clock.tick(FPS) / 1000.0
-        elapsed = time.time() - t0
+        elapsed = (time.time() - t0) * TIME_SCALE
         t = max(0.0, min(1.0, elapsed / ATTACK_TIME))
         def bezier(p0, c, p1p, tt):
             it = 1.0 - tt
@@ -163,9 +166,14 @@ def animate_attack(screen, clock, p1_units, p2_units, p1, p2, step_nr, cont_L=0,
         for u in p2_units:
             screen.blit(soldier_R, (int(u["x"]) - swR//2, int(u["y"]) - shR//2))
 
-        rem = max(0.0, ATTACK_TIME - (time.time()-t0))
+        rem = max(0.0, ATTACK_TIME - ((time.time()-t0) * TIME_SCALE))
         draw_hud(screen, p1, p2, "ATTACK", rem, step_nr)
-        pygame.display.flip()
+        if upscale_win is not None:
+            up = pygame.transform.smoothscale(screen, upscale_win.get_size())
+            upscale_win.blit(up, (0,0))
+            pygame.display.flip()
+        else:
+            pygame.display.flip()
 
     if (len(p1_units) > 0 and len(p2_units) > 0) and (cont_L > 0 or cont_R > 0):
         def assign_phase2(units, defender, count, side_left):
@@ -187,12 +195,12 @@ def animate_attack(screen, clock, p1_units, p2_units, p1, p2, step_nr, cont_L=0,
         surv_R = assign_phase2(p2_units, p1, cont_R, False)
         EXTRA = 1.0
         t1 = time.time()
-        while time.time() - t1 < EXTRA:
+        while ((time.time() - t1) * TIME_SCALE) < EXTRA:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit(); sys.exit(0)
             dt = clock.tick(FPS) / 1000.0
-            elapsed = time.time() - t1
+            elapsed = (time.time() - t1) * TIME_SCALE
             t = max(0.0, min(1.0, elapsed / EXTRA))
             def bezier(p0, c, p1p, tt):
                 it = 1.0 - tt
@@ -209,6 +217,11 @@ def animate_attack(screen, clock, p1_units, p2_units, p1, p2, step_nr, cont_L=0,
                 x, y = bezier((s['sx'], s['sy']), (s['cx'], s['cy']), (s['tx'], s['ty']), t)
                 pts = tri_points(int(x), int(y), 6, facing_right=False)
                 pygame.draw.polygon(screen, GREY, pts)
-            rem = max(0.0, EXTRA - (time.time()-t1))
+            rem = max(0.0, EXTRA - ((time.time()-t1) * TIME_SCALE))
             draw_hud(screen, p1, p2, "PUSH", rem, step_nr)
-            pygame.display.flip()
+            if upscale_win is not None:
+                up = pygame.transform.smoothscale(screen, upscale_win.get_size())
+                upscale_win.blit(up, (0,0))
+                pygame.display.flip()
+            else:
+                pygame.display.flip()
