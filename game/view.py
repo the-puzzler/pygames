@@ -1,6 +1,6 @@
 import math, random, os
 import pygame
-from .config import WIDTH, HEIGHT, FIELD_MARGIN, GREEN, BROWN, PINK, GREY, WHITE, BASE_WORKERS_PER_STEP, HOUSE_WORKER_BONUS, WORKER_SIZE, SOLDIER_SIZE, HOUSE_SIZE, TOWER_SIZE, GRASS_SIZE, TREE_SIZE, SEED
+from .config import WIDTH, HEIGHT, FIELD_MARGIN, GREEN, BROWN, PINK, GREY, WHITE, BASE_WORKERS_PER_STEP, HOUSE_WORKER_BONUS, WORKER_SIZE, SOLDIER_SIZE, HOUSE_SIZE, TOWER_SIZE, GRASS_SIZE, TREE_SIZE, SEED, DEFENSE_HEALTH
 
 
 def tri_points(cx, cy, size, facing_right=True):
@@ -66,6 +66,26 @@ def draw_base(surface, player, dt: float):
     for t in player._defense_positions:
         tx, ty = int(t['x']), int(t['y'])
         surface.blit(tower_img, (tx - tw//2, ty - th//2))
+        # Small HP bar above tower
+        try:
+            hp = max(0, min(DEFENSE_HEALTH, int(t.get('hp', DEFENSE_HEALTH))))
+        except Exception:
+            hp = DEFENSE_HEALTH
+        ratio = hp / max(1, DEFENSE_HEALTH)
+        bar_w = max(12, tw)
+        bar_h = 3
+        bx = tx - bar_w//2
+        by = ty - th//2 - 6
+        # background
+        pygame.draw.rect(surface, (40,40,40), pygame.Rect(bx, by, bar_w, bar_h))
+        # foreground color from red->yellow->green
+        if ratio < 0.33:
+            col = (200, 40, 40)
+        elif ratio < 0.66:
+            col = (220, 180, 40)
+        else:
+            col = (50, 200, 70)
+        pygame.draw.rect(surface, col, pygame.Rect(bx, by, int(bar_w * ratio), bar_h))
 
     # Workers: pink dots, gentle continuous wandering around base
     wr = 4
