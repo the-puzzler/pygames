@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>TRON Battle (PyScript)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- PyScript -->
+  <link rel="stylesheet" href="https://pyscript.net/2024.6.1/pyscript.css" />
+  <script defer src="https://pyscript.net/2024.6.1/pyscript.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif; background:#0b0f14; color:#e6edf3; }
+    header { padding: 12px 16px; border-bottom: 1px solid #1f2630; display:flex; align-items:center; gap:12px;}
+    header h1 { font-size: 18px; margin:0; }
+    main { display:grid; grid-template-columns: 360px 1fr; gap: 16px; padding: 16px; }
+    @media (max-width: 900px){ main{ grid-template-columns: 1fr; } }
+    .card { background:#0f1620; border:1px solid #1f2630; border-radius:12px; padding:12px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    textarea { width:100%; min-height:180px; background:#0b0f14; color:#e6edf3; border:1px solid #223; border-radius:8px; padding:8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:13px; }
+    button { background:#1e88e5; color:white; border:0; padding:8px 12px; border-radius:8px; cursor:pointer; }
+    button.secondary { background:#263241; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .tag { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; background:#16202d; border:1px solid #203047; font-size:12px; }
+    .tag em { font-style: normal; opacity:.8; }
+    canvas { width:100%; aspect-ratio: 1 / 1; image-rendering: pixelated; background:#080c12; border:1px solid #1f2630; border-radius:12px; }
+    .log { font-family: ui-monospace, monospace; white-space: pre-wrap; font-size:12px; background:#0b0f14; border:1px solid #223; padding:8px; border-radius:8px; max-height:140px; overflow:auto;}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>TRON Battle (PyScript)</h1>
+    <div class="row">
+      <button id="run">Run Match</button>
+      <button id="stop" class="secondary">Stop</button>
+      <button id="clear" class="secondary">Clear Bots</button>
+      <div id="pys-warn" class="tag" style="display:none; margin-left:8px;">⚠ PyScript not loaded — check internet</div>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h3 style="margin-top:4px;">Add/Upload Bot Functions</h3>
+      <p style="margin-top:0">Paste one or more <b>def my_bot(state):</b> functions below, then click <b>Add Bots</b>. Function names become player names.</p>
+      <textarea id="code"></textarea>
+      <div class="row">
+        <button id="add">Add Bots</button>
+        <input type="file" id="file" accept=".py" />
+      </div>
+      <h4>Registered Bots</h4>
+      <div id="botlist"></div>
+      <h4>Log</h4>
+      <div id="log" class="log"></div>
+      <details>
+        <summary>Example bots</summary>
+        <pre id="examples" style="white-space:pre-wrap; font-size:12px;">
+def straight_then_left(state):
+    s = state.sensors
+    if s["ahead_free"]: return "S"
+    return "L" if s["left_free"] else ("R" if s["right_free"] else "S")
+
+def right_hand_rule(state):
+    s = state.sensors
+    if s["right_free"]: return "R"
+    if s["ahead_free"]: return "S"
+    if s["left_free"]:  return "L"
+    return "R"
+
+def random_safe(state):
+    s = state.sensors
+    opts = []
+    if s["left_free"]:  opts.append("L")
+    if s["ahead_free"]: opts.append("S")
+    if s["right_free"]: opts.append("R")
+    import random
+    return random.choice(opts) if opts else "S"
+        </pre>
+      </details>
+    </section>
+
+    <section class="card">
+      <canvas id="board" width="700" height="700"></canvas>
+      <div class="row" style="justify-content:space-between; margin-top:8px;">
+        <div>
+          <label>Grid: <input id="grid" type="number" min="21" max="101" step="2" value="49" style="width:70px;"></label>
+          <label>Speed(ms): <input id="speed" type="number" min="0" max="200" step="5" value="30" style="width:70px;"></label>
+        </div>
+        <div id="legend" class="row"></div>
+      </div>
+    </section>
+  </main>
+
+  <py-config>
+    packages = []
+  </py-config>
+
+  <py-script>
+from js import document, console, window
+import math, random, asyncio
+
+# --- UI references
+canvas = document.getElementById("board")
+ctx = canvas.getContext("2d")
+botlist = document.getElementById("botlist")
+log_el = document.getElementById("log")
+legend = document.getElementById("legend")
+btn_add = document.getElementById("add")
+btn_run = document.getElementById("run")
+btn_stop = document.getElementById("stop")
+btn_clear = document.getElementById("clear")
+ta = document.getElementById("code")
+file_input = document.getElementById("file")
+grid_input = document.getElementById("grid")
+speed_input = document.getElementById("speed")
+
+# --- Colors (CSS friendly)
+PLAYER_COLORS = ["dodgerblue","orangered","limegreen","gold",
+                 "mediumpurple","turquoise","hotpink","sienna"]
+
+# --- Global registry of bot callables
+BOTS = []  # list of (name, callable)
+
+def log(msg):
+    log_el.innerText = (log_el.innerText + str(msg) + "\n")[-4000:]
+
+def render_botlist():
+    botlist.innerHTML = ""
+    for i, (name, _) in enumerate(BOTS):
+        chip = document.createElement("span")
+        chip.className = "tag"
+        chip.style.borderColor = "#0000"
+        chip.style.background = "#16202d"
+        bullet = document.createElement("span")
+        bullet.style.display = "inline-block"
+        bullet.style.width = "10px"
+        bullet.style.height = "10px"
+        bullet.style.borderRadius = "50%"
+        bullet.style.background = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+        chip.appendChild(bullet)
+        chip.appendChild(document.createTextNode(f" {name} "))
+        botlist.appendChild(chip)
+
+def update_legend(names):
+    legend.innerHTML = ""
+    for i, name in enumerate(names):
+        chip = document.createElement("span")
+        chip.className = "tag"
+        bullet = document.createElement("span")
+        bullet.style.cssText = "display:inline-block;width:10px;height:10px;border-radius:50%;"
+        bullet.style.background = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+        chip.appendChild(bullet)
+        em = document.createElement("em")
+        em.textContent = f" {name}"
+        chip.appendChild(em)
+        legend.appendChild(chip)
+
+# --- Safe-ish exec environment (no imports exposed)
+SAFE_GLOBALS = {"__builtins__": {"True": True, "False": False, "None": None, "len": len, "range": range, "min": min, "max": max, "abs": abs}}
+
+def add_code(code:str):
+    local_ns = {}
+    try:
+        exec(code, SAFE_GLOBALS, local_ns)
+    except Exception as e:
+        log(f"❌ Code error: {e}")
+        return 0
+    added = 0
+    for k,v in local_ns.items():
+        if callable(v) and v.__name__ == k:  # function defs only
+            # check signature by calling with a dummy state later
+            BOTS.append((k, v))
+            added += 1
+            log(f"✅ Added bot: {k}")
+    render_botlist()
+    return added
+
+# File upload
+def on_file_change(evt):
+    files = file_input.files
+    if not files or len(files)==0: return
+    f = files.item(0)
+    # read via FileReader
+    fr = window.FileReader.new()
+    def onload(_):
+        add_code(fr.result)
+    fr.onload = onload
+    fr.readAsText(f)
+
+file_input.addEventListener("change", on_file_change)
+
+# Buttons
+def on_add(_):
+    code = ta.value
+    if not code.strip():
+        # Preload examples if empty
+        code = document.getElementById("examples").innerText
+    add_code(code)
+
+btn_add.addEventListener("click", on_add)
+
+def on_clear(_):
+    BOTS.clear()
+    render_botlist()
+    legend.innerHTML = ""
+    log("Cleared bots.")
+btn_clear.addEventListener("click", on_clear)
+
+# ----- TRON engine (grid + canvas drawing) -----
+TURN_L = {"E":"N","N":"W","W":"S","S":"E"}
+TURN_R = {"E":"S","S":"W","W":"N","N":"E"}
+DELTA  = {"E":(1,0), "N":(0,-1), "W":(-1,0), "S":(0,1)}
+
+def evenly_spaced_starts(n, W, H, margin=2):
+    cx, cy = W//2, H//2
+    r = min(W,H)//2 - margin - 1
+    spots = []
+    for i in range(n):
+        ang = (i / n) * 2*math.pi
+        gx = int(round(cx + r * math.cos(ang)))
+        gy = int(round(cy + r * math.sin(ang)))
+        dx, dy = cx - gx, cy - gy
+        if abs(dx) >= abs(dy): heading = "E" if dx > 0 else "W"
+        else:                   heading = "S" if dy > 0 else "N"
+        spots.append(((gx,gy), heading))
+    return spots
+
+def in_bounds(x,y,W,H): return 0 <= x < W and 0 <= y < H
+
+class BotState:
+    __slots__ = ("me_index","pos","heading","alive_count","others","bounds","sensors")
+    def __init__(self, me_index, pos, heading, alive_count, others, sensors, W, H):
+        self.me_index = me_index
+        self.pos = pos
+        self.heading = heading
+        self.alive_count = alive_count
+        self.others = others
+        self.bounds = (0, W-1, 0, H-1)
+        self.sensors = sensors
+
+def compute_sensors(heading, pos, occupied, W, H):
+    x,y = pos
+    def free(h):
+        dx,dy = DELTA[h]
+        nx, ny = x+dx, y+dy
+        return in_bounds(nx,ny,W,H) and ((nx,ny) not in occupied)
+    return {"left_free": free(TURN_L[heading]),
+            "ahead_free": free(heading),
+            "right_free": free(TURN_R[heading])}
+
+def draw_cell(x, y, color, cell_px):
+    ctx.fillStyle = color
+    ctx.fillRect(x*cell_px, y*cell_px, cell_px, cell_px)
+
+def clear_canvas():
+    ctx.fillStyle = "#080c12"
+    ctx.fillRect(0,0,canvas.width, canvas.height)
+
+running_task = None
+
+async def run_match():
+    global running_task
+    if running_task is not None:
+        log("Already running.")
+        return
+
+    n = len(BOTS)
+    if n < 2:
+        log("Add at least 2 bots.")
+        return
+
+    W = int(grid_input.value)
+    H = W
+    if W % 2 == 0: W += 1; H = W
+    grid_input.value = str(W)
+    speed_ms = max(0, int(speed_input.value))
+    cell_px = canvas.width // W
+
+    # State
+    occupied = {}  # (x,y)->owner
+    heads = [None]*n
+    heading = [None]*n
+    alive = [True]*n
+    names = [name for name,_ in BOTS]
+    colors = [PLAYER_COLORS[i % len(PLAYER_COLORS)] for i in range(n)]
+    update_legend(names)
+
+    # Starts
+    starts = evenly_spaced_starts(n, W, H)
+    for i in range(n):
+        (sx,sy), h = starts[i]
+        heads[i] = (sx,sy)
+        heading[i] = h
+        occupied[(sx,sy)] = i
+
+    clear_canvas()
+    # draw initial cells
+    for (x,y), owner in occupied.items():
+        draw_cell(x, y, colors[owner], cell_px)
+
+    async def loop():
+        ticks = 0
+        nonlocal running_task
+        try:
+            while sum(alive) > 1 and ticks < 5000:
+                ticks += 1
+                # decisions
+                decisions = [None]*n
+                for i, (_name, bot) in enumerate(BOTS):
+                    if not alive[i]: continue
+                    sensors = compute_sensors(heading[i], heads[i], occupied, W, H)
+                    others = [(heads[j], alive[j]) for j in range(n)]
+                    state = BotState(i, heads[i], heading[i], sum(alive), others, sensors, W, H)
+                    try:
+                        mv = bot(state)
+                    except Exception as e:
+                        mv = "S"
+                    mv = (mv or "S").upper().strip()[:1]
+                    decisions[i] = mv if mv in ("L","R","S") else "S"
+
+                # plan moves
+                next_head = [None]*n
+                next_pos = [None]*n
+                targets = {}
+                for i in range(n):
+                    if not alive[i]: continue
+                    h2 = heading[i]
+                    if decisions[i] == "L": h2 = TURN_L[h2]
+                    elif decisions[i] == "R": h2 = TURN_R[h2]
+                    dx,dy = DELTA[h2]
+                    x,y = heads[i]
+                    nx, ny = x+dx, y+dy
+                    next_head[i] = h2
+                    next_pos[i] = (nx,ny)
+                    targets.setdefault((nx,ny), []).append(i)
+
+                # crashes
+                crashed = set()
+                for i in range(n):
+                    if not alive[i]: continue
+                    nx,ny = next_pos[i]
+                    if (not in_bounds(nx,ny,W,H)) or ((nx,ny) in occupied):
+                        crashed.add(i)
+                for cell, idxs in targets.items():
+                    if len(idxs) >= 2:
+                        crashed.update(idxs)
+
+                # apply & draw
+                for i in range(n):
+                    if not alive[i]: continue
+                    if i in crashed:
+                        alive[i] = False
+                        continue
+                    heads[i] = next_pos[i]
+                    heading[i] = next_head[i]
+                    occupied[heads[i]] = i
+                    x,y = heads[i]
+                    draw_cell(x, y, colors[i], cell_px)
+
+                # small title overlay
+                ctx.fillStyle = "rgba(0,0,0,0.35)"
+                ctx.fillRect(0,0,canvas.width, 28)
+                ctx.fillStyle = "#e6edf3"
+                ctx.font = "14px ui-monospace, monospace"
+                ctx.fillText(f"Ticks {ticks} — Alive {sum(alive)} — " + ", ".join(nm for j,(nm,_) in enumerate(BOTS) if alive[j]), 8, 18)
+
+                if speed_ms == 0:
+                    await asyncio.sleep(0)  # yield
+                else:
+                    await asyncio.sleep(speed_ms/1000)
+
+            winners = [i for i,a in enumerate(alive) if a]
+            msg = "WINNER: " + (names[winners[0]] if len(winners)==1 else " / ".join(names[i] for i in winners))
+            ctx.fillStyle = "rgba(0,0,0,0.5)"
+            ctx.fillRect(0,0,canvas.width, 48)
+            ctx.fillStyle = "#e6edf3"
+            ctx.font = "20px ui-monospace, monospace"
+            ctx.fillText(msg, 8, 32)
+            log(msg)
+        finally:
+            running_task = None
+
+    running_task = asyncio.create_task(loop())
+
+def on_run(_): 
+    window.focus()
+    asyncio.ensure_future(run_match())
+
+btn_run.addEventListener("click", on_run)
+
+def on_stop(_):
+    global running_task
+    if running_task is not None:
+        running_task.cancel()
+        running_task = None
+        log("Stopped.")
+btn_stop.addEventListener("click", on_stop)
+
+# Nice default: preload examples into the textarea
+ta.value = document.getElementById("examples").innerText
+render_botlist()
+log("Paste or upload .py with one or more `def botname(state):` functions, then Add Bots → Run Match.")
+
+  </py-script>
+
+  <script>
+    // Show a warning if PyScript failed to load, which prevents buttons from working
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        if (!window.pyscript) {
+          const warn = document.getElementById('pys-warn');
+          if (warn) warn.style.display = 'inline-flex';
+        }
+      }, 600);
+    });
+  </script>
+</body>
+</html>
