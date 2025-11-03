@@ -83,6 +83,7 @@ def run_game(BOT_L, BOT_R):
                     if new_sites_L:
                         for site in new_sites_L:
                             p1.schedule_builders_consume(site, min(HOUSE_COST, len(p1._worker_positions)), duration=2.0)
+                        p1._record_spawns(new_sites_L)
                     p1.last_action = f"Build Houses x{can_h_L}" if can_h_L else "Wait"
                 if act_R["kind"] == "build_houses":
                     can_h_R = act_R["build_houses"]
@@ -90,6 +91,7 @@ def run_game(BOT_L, BOT_R):
                     if new_sites_R:
                         for site in new_sites_R:
                             p2.schedule_builders_consume(site, min(HOUSE_COST, len(p2._worker_positions)), duration=2.0)
+                        p2._record_spawns(new_sites_R)
                     p2.last_action = f"Build Houses x{can_h_R}" if can_h_R else "Wait"
 
                 # Defenses (consume DEFENSE_COST workers each visually as builders)
@@ -100,6 +102,7 @@ def run_game(BOT_L, BOT_R):
                         sites_Ld = p1.add_defenses(can_d_L)
                         for site in sites_Ld:
                             p1.schedule_builders_consume(site, min(DEFENSE_COST, len(p1._worker_positions)), duration=1.5)
+                        p1._record_spawns(sites_Ld)
                     p1.last_action = f"Build Defenses x{can_d_L}" if can_d_L else "Wait"
                 if act_R["kind"] == "build_defenses":
                     can_d_R = act_R["build_defenses"]
@@ -108,6 +111,7 @@ def run_game(BOT_L, BOT_R):
                         sites_Rd = p2.add_defenses(can_d_R)
                         for site in sites_Rd:
                             p2.schedule_builders_consume(site, min(DEFENSE_COST, len(p2._worker_positions)), duration=1.5)
+                        p2._record_spawns(sites_Rd)
                     p2.last_action = f"Build Defenses x{can_d_R}" if can_d_R else "Wait"
 
                 # Convert workers -> soldiers (visual ingress/egress)
@@ -230,7 +234,7 @@ def run_game(BOT_L, BOT_R):
                     continue
 
         elif phase == "ATTACK":
-            animate_attack(screen, clock, u_L, u_R, p1, p2, step_nr, cont_L, cont_R, placeholders_L, placeholders_R)
+            animate_attack(screen, clock, u_L, u_R, p1, p2, step_nr, cont_L, cont_R, placeholders_L, placeholders_R, destroyed_L_defs, destroyed_R_defs)
 
             left_dead  = (p1.soldiers <= 0 and p1.workers <= 0)
             right_dead = (p2.soldiers <= 0 and p2.workers <= 0)

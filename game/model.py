@@ -1,4 +1,4 @@
-import math, random
+import math, random, time
 from .config import WIDTH, HEIGHT, FIELD_MARGIN, BASE_WORKERS_PER_STEP, HOUSE_WORKER_BONUS, HOUSE_COST, DEFENSE_COST, DEFENSE_HEALTH, WORKER_BONUS
 
 
@@ -28,6 +28,8 @@ class PlayerState:
         # UI
         self.last_action = ""
         self.last_worker_bonus = 0
+        # Visual effects
+        self._spawn_bursts = []  # list of dicts: {x,y,until}
 
     # No defense multiplier — defenses are HP-based towers now
 
@@ -162,6 +164,14 @@ class PlayerState:
                 self._defense_positions.append({"x": x2, "y": y2, "hp": DEFENSE_HEALTH})
                 sites.append((x2, y2))
         return sites
+
+    # Record spawn effects when building functions are used
+    def _record_spawns(self, sites, duration=0.6):
+        if not sites:
+            return
+        until = time.time() + duration
+        for (x, y) in sites:
+            self._spawn_bursts.append({"x": x, "y": y, "until": until})
 
     def schedule_builders(self, sites, per_site=3, duration=1.0):
         if not sites or not self._worker_positions:

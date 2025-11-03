@@ -58,7 +58,7 @@ def spawn_attack_units(p, count, defender, both_attacking, starts, target_points
     return units
 
 
-def animate_attack(screen, clock, p1_units, p2_units, p1, p2, step_nr, cont_L=0, cont_R=0, placeholders_L=None, placeholders_R=None):
+def animate_attack(screen, clock, p1_units, p2_units, p1, p2, step_nr, cont_L=0, cont_R=0, placeholders_L=None, placeholders_R=None, bursts_L=None, bursts_R=None):
     t0 = time.time()
     while time.time() - t0 < ATTACK_TIME:
         for event in pygame.event.get():
@@ -101,6 +101,28 @@ def animate_attack(screen, clock, p1_units, p2_units, p1, p2, step_nr, cont_L=0,
         draw_field(screen)
         draw_base(screen, p1, dt)
         draw_base(screen, p2, dt)
+
+        # Tower destruction flair: expanding rings
+        def draw_bursts(positions):
+            if not positions:
+                return
+            # progress in [0,1]
+            prog = max(0.0, min(1.0, (time.time() - t0) / ATTACK_TIME))
+            for (bx, by) in positions:
+                # two rings with phase offset
+                for k in (0.0, 0.35):
+                    p = (prog + k) % 1.0
+                    radius = 6 + int(26 * p)
+                    alpha = int(max(0, 180 * (1.0 - p)))
+                    if alpha <= 0:
+                        continue
+                    col = (255, 200, 60, alpha)
+                    ring = pygame.Surface((radius*2+2, radius*2+2), pygame.SRCALPHA)
+                    pygame.draw.circle(ring, col, (radius+1, radius+1), radius, width=2)
+                    screen.blit(ring, (int(bx) - radius - 1, int(by) - radius - 1))
+
+        draw_bursts(bursts_L)
+        draw_bursts(bursts_R)
 
         # Draw placeholders for victims (static until hit)
         if placeholders_L:

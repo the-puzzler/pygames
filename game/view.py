@@ -1,4 +1,4 @@
-import math, random, os
+import math, random, os, time
 import pygame
 from .config import WIDTH, HEIGHT, FIELD_MARGIN, GREEN, BROWN, PINK, GREY, WHITE, BASE_WORKERS_PER_STEP, HOUSE_WORKER_BONUS, WORKER_SIZE, SOLDIER_SIZE, HOUSE_SIZE, TOWER_SIZE, GRASS_SIZE, TREE_SIZE, SEED, DEFENSE_HEALTH
 
@@ -86,6 +86,29 @@ def draw_base(surface, player, dt: float):
         else:
             col = (50, 200, 70)
         pygame.draw.rect(surface, col, pygame.Rect(bx, by, int(bar_w * ratio), bar_h))
+
+    # Building spawn bursts (same flavor as tower destruction rings)
+    if getattr(player, '_spawn_bursts', None):
+        now = time.time()
+        keep = []
+        for b in player._spawn_bursts:
+            tleft = b.get('until', 0) - now
+            if tleft <= 0:
+                continue
+            bx, by = b.get('x', 0), b.get('y', 0)
+            prog = 1.0 - (tleft / max(1e-6, (b.get('until', now) - (b.get('until', now) - 0.6))))
+            for k in (0.0, 0.35):
+                p = (prog + k) % 1.0
+                radius = 6 + int(26 * p)
+                alpha = int(max(0, 180 * (1.0 - p)))
+                if alpha <= 0:
+                    continue
+                col = (255, 200, 60, alpha)
+                ring = pygame.Surface((radius*2+2, radius*2+2), pygame.SRCALPHA)
+                pygame.draw.circle(ring, col, (radius+1, radius+1), radius, width=2)
+                surface.blit(ring, (int(bx) - radius - 1, int(by) - radius - 1))
+            keep.append(b)
+        player._spawn_bursts = keep
 
     # Workers: pink dots, gentle continuous wandering around base
     wr = 4
